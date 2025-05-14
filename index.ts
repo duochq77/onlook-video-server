@@ -15,14 +15,14 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
   const audioFile = (req.files as any)?.['audio']?.[0]
 
   if (!videoFile || !audioFile) {
-    return res.status(400).send('Thiếu file video hoặc audio')
+    return res.status(400).json({ error: 'Thiếu file video hoặc audio' })
   }
 
-  const outputPath = path.join('outputs', `output-${Date.now()}.mp4`)
+  const outputFileName = `output-${Date.now()}.mp4`
+  const outputPath = path.join(__dirname, 'outputs', outputFileName)
 
-  console.log('📥 Bắt đầu xử lý video và audio...')
-  console.log('📥 File video:', videoFile.path)
-  console.log('📥 File audio:', audioFile.path)
+  console.log('📥 Nhận file video:', videoFile.originalname)
+  console.log('📥 Nhận file audio:', audioFile.originalname)
 
   ffmpeg()
     .input(videoFile.path)
@@ -35,27 +35,28 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
       '-movflags +faststart',
       '-shortest',
     ])
-    .on('start', (cmdLine) => {
-      console.log('⚙️ FFmpeg command:', cmdLine)
+    .on('start', cmd => console.log('⚙️ FFmpeg:', cmd))
+    .on('error', (err) => {
+      console.error('❌ Lỗi FFmpeg:', err.message)
+      res.status(500).json({ error: 'Lỗi xử lý FFmpeg' })
     })
     .on('end', () => {
-      console.log('✅ Đã xử lý xong. Gửi file cho client.')
-      res.sendFile(path.resolve(outputPath), {}, (err) => {
-        if (err) console.error('❌ Lỗi khi gửi file:', err)
+      console.log('✅ Xử lý xong. Gửi file:', outputPath)
+      res.sendFile(outputPath, {}, (err) => {
+        // Cleanup
         fs.unlinkSync(videoFile.path)
         fs.unlinkSync(audioFile.path)
         fs.unlinkSync(outputPath)
+        if (err) console.error('❌ Lỗi gửi file:', err)
       })
-    })
-    .on('error', (err) => {
-      console.error('❌ Lỗi FFmpeg:', err.message)
-      console.log('📄 Đường dẫn video:', videoFile.path)
-      console.log('📄 Đường dẫn audio:', audioFile.path)
-      res.status(500).send('Lỗi xử lý video/audio')
     })
     .save(outputPath)
 })
 
+// Tạo thư mục nếu chưa có
+const outputsDir = path.join(__dirname, 'outputs')
+if (!fs.existsSync(outputsDir)) fs.mkdirSync(outputsDir)
+
 app.listen(10000, () => {
-  console.log('✅ Server is running on http://localhost:10000')
+  console.log('🚀 Server is running at http://localhost:10000')
 })
