@@ -4,6 +4,11 @@ import multer from 'multer'
 import ffmpeg from 'fluent-ffmpeg'
 import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'url'
+
+// ✅ Khai báo lại __dirname cho ES Module
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 const app = express()
 const upload = multer({ dest: 'uploads/' })
@@ -21,8 +26,8 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
   const outputFileName = `output-${Date.now()}.mp4`
   const outputPath = path.join(__dirname, 'outputs', outputFileName)
 
-  console.log('📥 Nhận file video:', videoFile.originalname)
-  console.log('📥 Nhận file audio:', audioFile.originalname)
+  console.log('📥 Nhận video:', videoFile.originalname)
+  console.log('📥 Nhận audio:', audioFile.originalname)
 
   ffmpeg()
     .input(videoFile.path)
@@ -38,7 +43,7 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
     .on('start', cmd => console.log('⚙️ FFmpeg:', cmd))
     .on('error', (err) => {
       console.error('❌ Lỗi FFmpeg:', err.message)
-      res.status(500).json({ error: 'Lỗi xử lý FFmpeg' })
+      res.status(500).json({ error: 'Lỗi xử lý video/audio' })
     })
     .on('end', () => {
       console.log('✅ Xử lý xong. Gửi file:', outputPath)
@@ -53,7 +58,7 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
     .save(outputPath)
 })
 
-// Tạo thư mục nếu chưa có
+// ✅ Tạo thư mục outputs nếu chưa có
 const outputsDir = path.join(__dirname, 'outputs')
 if (!fs.existsSync(outputsDir)) fs.mkdirSync(outputsDir)
 
