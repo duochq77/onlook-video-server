@@ -6,7 +6,6 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
-// ✅ Khai báo lại __dirname cho ES Module
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -48,7 +47,6 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
     .on('end', () => {
       console.log('✅ Xử lý xong. Gửi file:', outputPath)
       res.sendFile(outputPath, {}, (err) => {
-        // Cleanup
         fs.unlinkSync(videoFile.path)
         fs.unlinkSync(audioFile.path)
         fs.unlinkSync(outputPath)
@@ -62,6 +60,8 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
 const outputsDir = path.join(__dirname, 'outputs')
 if (!fs.existsSync(outputsDir)) fs.mkdirSync(outputsDir)
 
-app.listen(10000, () => {
-  console.log('🚀 Server is running at http://localhost:10000')
+// ✅ Sử dụng đúng cổng do Render cấp
+const PORT = process.env.PORT || 10000
+app.listen(PORT, () => {
+  console.log(`🚀 Server is running on port ${PORT}`)
 })
