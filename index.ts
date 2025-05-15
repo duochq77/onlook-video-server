@@ -1,67 +1,54 @@
-import express from 'express'
+import express, { Request } from 'express'
 import cors from 'cors'
 import multer from 'multer'
 import ffmpeg from 'fluent-ffmpeg'
-import fs from 'fs'
 import path from 'path'
-import { fileURLToPath } from 'url'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+import fs from 'fs'
 
 const app = express()
-const upload = multer({ dest: 'uploads/' })
+const port = 3001
 
 app.use(cors())
+app.use(express.json())
 
-app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req, res) => {
-  const videoFile = (req.files as any)?.['video']?.[0]
-  const audioFile = (req.files as any)?.['audio']?.[0]
+const upload = multer({ dest: 'uploads/' })
+
+interface MulterRequest extends Request {
+  files: {
+    [fieldname: string]: Express.Multer.File[]
+  }
+}
+
+app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), async (req, res) => {
+  const request = req as MulterRequest
+
+  const videoFile = request.files?.['video']?.[0]
+  const audioFile = request.files?.['audio']?.[0]
 
   if (!videoFile || !audioFile) {
-    return res.status(400).json({ error: 'Thiếu file video hoặc audio' })
+    return res.status(400).json({ error: 'Thiếu video hoặc audio file' })
   }
 
-  const outputFileName = `output-${Date.now()}.mp4`
-  const outputPath = path.join(__dirname, 'outputs', outputFileName)
-
-  console.log('📥 Nhận video:', videoFile.originalname)
-  console.log('📥 Nhận audio:', audioFile.originalname)
+  const outputPath = path.join('outputs', `${Date.now()}-output.mp4`)
 
   ffmpeg()
-    .input(videoFile.path)
-    .input(audioFile.path)
-    .outputOptions([
-      '-map 0:v:0',
-      '-map 1:a:0',
-      '-c:v copy',
-      '-c:a aac',
-      '-movflags +faststart',
-      '-shortest',
-    ])
-    .on('start', cmd => console.log('⚙️ FFmpeg:', cmd))
-    .on('error', (err) => {
-      console.error('❌ Lỗi FFmpeg:', err.message)
-      res.status(500).json({ error: 'Lỗi xử lý video/audio' })
-    })
+    .addInput(videoFile.path)
+    .addInput(audioFile.path)
+    .outputOptions('-c:v copy', '-c:a aac', '-shortest')
+    .save(outputPath)
     .on('end', () => {
-      console.log('✅ Xử lý xong. Gửi file:', outputPath)
-      res.sendFile(outputPath, {}, (err) => {
-        fs.unlinkSync(videoFile.path)
-        fs.unlinkSync(audioFile.path)
+      fs.unlinkSync(videoFile.path)
+      fs.unlinkSync(audioFile.path)
+      res.download(outputPath, () => {
         fs.unlinkSync(outputPath)
-        if (err) console.error('❌ Lỗi gửi file:', err)
       })
     })
-    .save(outputPath)
+    .on('error', (err: any) => {
+      console.error('Lỗi ffmpeg:', err)
+      res.status(500).json({ error: 'Xử lý thất bại' })
+    })
 })
 
-// ✅ Tạo thư mục outputs nếu chưa có
-const outputsDir = path.join(__dirname, 'outputs')
-if (!fs.existsSync(outputsDir)) fs.mkdirSync(outputsDir)
-
-// ✅ Sử dụng đúng cổng do Render cấp
-const PORT = process.env.PORT || 10000
-app.listen(PORT, () => {
-  console.log(`🚀 Server is running on port ${PORT}`)
+app.listen(port, () => {
+  console.log(`🚀 Server đang chạy tại http://localhost:${port}`)
 })
