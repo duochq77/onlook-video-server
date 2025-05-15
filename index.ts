@@ -109,8 +109,8 @@ app.post('/process', upload.array('media', 2), async (req, res) => {
         .input(loopedVideo)
         .input(loopedAudio)
         .outputOptions([
-          '-map', '0:v:0', // lấy video từ loopedVideo
-          '-map', '1:a:0', // lấy audio từ loopedAudio
+          '-map', '0:v:0',
+          '-map', '1:a:0',
           '-c:v', 'copy',
           '-c:a', 'aac'
         ])
@@ -127,6 +127,25 @@ app.post('/process', upload.array('media', 2), async (req, res) => {
     console.error('❌ Lỗi xử lý video/audio:', err.message)
     res.status(500).send(`❌ Lỗi xử lý video/audio: ${err.message}`)
   }
+})
+
+app.post('/cleanup/:userId', (req, res) => {
+  const userId = req.params.userId
+  const userDir = path.join(process.cwd(), 'outputs', userId)
+
+  if (!fs.existsSync(userDir)) {
+    return res.status(404).send('❌ Không tìm thấy thư mục người dùng')
+  }
+
+  setTimeout(() => {
+    const files = fs.readdirSync(userDir)
+    for (const file of files) {
+      fs.unlinkSync(path.join(userDir, file))
+    }
+    console.log(`🧹 Đã xoá toàn bộ file trong /outputs/${userId} sau 3 phút`)
+  }, 3 * 60 * 1000)
+
+  res.send(`🕒 Hẹn xoá thư mục /outputs/${userId} sau 3 phút`)
 })
 
 app.listen(port, () => {
