@@ -11,12 +11,13 @@ const port = process.env.PORT || 10000
 app.use(cors())
 app.use(express.json())
 
+// ⚠️ Đảm bảo thư mục outputs tồn tại
 const outputsDir = path.join(process.cwd(), 'outputs')
 if (!fs.existsSync(outputsDir)) {
   fs.mkdirSync(outputsDir)
 }
 
-// Cho phép truy cập file mp4 từ URL như /outputs/output-xxx.mp4
+// Cho phép truy cập file video đã xử lý
 app.use('/outputs', express.static(outputsDir))
 
 const upload = multer({ dest: 'uploads/' })
@@ -39,11 +40,13 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
     .on('end', () => {
       fs.unlinkSync(videoFile.path)
       fs.unlinkSync(audioFile.path)
+      console.log(`✅ Đã xử lý xong: ${outputFileName}`)
       res.send(`✅ Đã xử lý xong: ${outputFileName}`)
     })
-    .on('error', (err) => {
+    .on('error', (err, stdout, stderr) => {
       console.error('❌ Lỗi xử lý video/audio:', err.message)
-      res.status(500).send(`❌ Lỗi xử lý video/audio: ${err.message}`)
+      console.error('📋 FFmpeg stderr:\n', stderr)
+      res.status(500).send(`❌ Lỗi xử lý video/audio: ${err.message}\n\n${stderr}`)
     })
     .save(outputPath)
 })
