@@ -12,19 +12,19 @@ const port = process.env.PORT || 10000
 app.use(cors())
 app.use(express.json())
 
-// ✅ Dùng process.cwd() để đúng đường dẫn trên Render
+// ✅ Đảm bảo đường dẫn đúng trên Render
 app.use('/outputs', express.static(path.join(process.cwd(), 'outputs')))
 
 const upload = multer({ dest: 'uploads/' })
 const ffprobe = util.promisify(ffmpeg.ffprobe)
 
-// ✅ Hàm lấy thời lượng video/audio
+// ✅ Hàm lấy thời lượng
 const getDuration = async (filePath: string): Promise<number> => {
   const metadata = await ffprobe(filePath)
   return metadata.format.duration || 0
 }
 
-// ✅ Hàm xoá file quá 3 phút trong thư mục người dùng
+// ✅ Xoá file cũ hơn 3 phút
 const cleanupOldFiles = (userDir: string) => {
   const now = Date.now()
   const files = fs.readdirSync(userDir)
@@ -47,12 +47,12 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), asyn
     return res.status(400).send('❌ Thiếu file video hoặc audio')
   }
 
-  const outputsDir = path.join(process.cwd(), 'outputs', userId)
+  const outputsRoot = path.join(process.cwd(), 'outputs')
+  const outputsDir = path.join(outputsRoot, userId)
   if (!fs.existsSync(outputsDir)) {
     fs.mkdirSync(outputsDir, { recursive: true })
   }
 
-  // ✅ Xoá file cũ hơn 3 phút
   cleanupOldFiles(outputsDir)
 
   const outputFileName = `output-${Date.now()}.mp4`
@@ -62,35 +62,35 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), asyn
     const videoDuration = await getDuration(videoFile.path)
     const audioDuration = await getDuration(audioFile.path)
 
-    const loopVideo = Math.ceil(audioDuration / videoDuration)
-    const loopAudio = Math.ceil(videoDuration / audioDuration)
-
-    const finalDuration = Math.min(loopVideo * videoDuration, loopAudio * audioDuration)
-
+    const finalDuration = Math.max(videoDuration, audioDuration)
     const loopedVideo = path.join(outputsDir, `looped-video-${Date.now()}.mp4`)
     const loopedAudio = path.join(outputsDir, `looped-audio-${Date.now()}.mp3`)
 
-    await new Promise((resolve, reject) => {
-      ffmpeg()
-        .input(videoFile.path)
-        .inputOptions(['-stream_loop', `${loopVideo - 1}`])
-        .outputOptions('-t', `${finalDuration}`)
-        .output(loopedVideo)
-        .on('end', resolve)
-        .on('error', reject)
-        .run()
-    })
-
-    await new Promise((resolve, reject) => {
-      ffmpeg()
-        .input(audioFile.path)
-        .inputOptions(['-stream_loop', `${loopAudio - 1}`])
-        .outputOptions('-t', `${finalDuration}`)
-        .output(loopedAudio)
-        .on('end', resolve)
-        .on('error', reject)
-        .run()
-    })
+    if (videoDuration < audioDuration) {
+      await new Promise((resolve, reject) => {
+        ffmpeg()
+          .input(videoFile.path)
+          .inputOptions(['-stream_loop', `${Math.ceil(audioDuration / videoDuration) - 1}`])
+          .outputOptions('-t', `${finalDuration}`)
+          .output(loopedVideo)
+          .on('end', resolve)
+          .on('error', reject)
+          .run()
+      })
+      fs.renameSync(audioFile.path, loopedAudio)
+    } else {
+      await new Promise((resolve, reject) => {
+        ffmpeg()
+          .input(audioFile.path)
+          .inputOptions(['-stream_loop', `${Math.ceil(videoDuration / audioDuration) - 1}`])
+          .outputOptions('-t', `${finalDuration}`)
+          .output(loopedAudio)
+          .on('end', resolve)
+          .on('error', reject)
+          .run()
+      })
+      fs.renameSync(videoFile.path, loopedVideo)
+    }
 
     await new Promise((resolve, reject) => {
       ffmpeg()
@@ -102,12 +102,11 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), asyn
         .on('error', reject)
     })
 
-    fs.unlinkSync(videoFile.path)
-    fs.unlinkSync(audioFile.path)
     fs.unlinkSync(loopedVideo)
     fs.unlinkSync(loopedAudio)
 
-    res.send(`✅ Đã xử lý xong: ${userId}/${outputFileName}`)
+    const publicUrl = `/outputs/${userId}/${outputFileName}`
+    res.send(`✅ Đã xử lý xong: ${publicUrl}`)
   } catch (err: any) {
     console.error('❌ Lỗi xử lý video/audio:', err.message)
     res.status(500).send(`❌ Lỗi xử lý video/audio: ${err.message}`)
