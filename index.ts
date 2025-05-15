@@ -8,17 +8,11 @@ import path from 'path'
 const app = express()
 const port = process.env.PORT || 10000
 
-// Tạo thư mục outputs nếu chưa có
-const outputsDir = path.join(process.cwd(), 'outputs')
-if (!fs.existsSync(outputsDir)) {
-  fs.mkdirSync(outputsDir)
-}
-
 app.use(cors())
 app.use(express.json())
 
-// Cho phép truy cập file qua URL /outputs/...
-app.use('/outputs', express.static(outputsDir))
+// Dịch vụ tĩnh để truy cập file output
+app.use('/outputs', express.static(path.join(process.cwd(), 'outputs')))
 
 const upload = multer({ dest: 'uploads/' })
 
@@ -31,22 +25,32 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
   }
 
   const outputFileName = `output-${Date.now()}.mp4`
-  const outputPath = path.join(outputsDir, outputFileName)
+  const outputPath = path.join('outputs', outputFileName)
 
   ffmpeg()
     .input(videoFile.path)
     .input(audioFile.path)
     .outputOptions('-c:v copy', '-c:a aac', '-shortest')
+
+    .on('start', (cmdLine) => {
+      console.log('📦 FFmpeg command:', cmdLine)
+    })
+
+    .on('stderr', (line) => {
+      console.log('📄 FFmpeg log:', line)
+    })
+
     .on('end', () => {
-      // Xoá file tạm (input), KHÔNG xoá file output
       fs.unlinkSync(videoFile.path)
       fs.unlinkSync(audioFile.path)
       res.send(`✅ Đã xử lý xong: ${outputFileName}`)
     })
+
     .on('error', (err) => {
       console.error('❌ Lỗi xử lý video/audio:', err.message)
       res.status(500).send(`❌ Lỗi xử lý video/audio: ${err.message}`)
     })
+
     .save(outputPath)
 })
 
