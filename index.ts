@@ -108,7 +108,12 @@ app.post('/process', upload.array('media', 2), async (req, res) => {
       ffmpeg()
         .input(loopedVideo)
         .input(loopedAudio)
-        .outputOptions(['-c:v copy', '-c:a aac'])
+        .outputOptions([
+          '-map', '0:v:0', // lấy video từ loopedVideo
+          '-map', '1:a:0', // lấy audio từ loopedAudio
+          '-c:v', 'copy',
+          '-c:a', 'aac'
+        ])
         .save(outputPath)
         .on('end', resolve)
         .on('error', reject)
