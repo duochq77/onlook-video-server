@@ -1,22 +1,31 @@
 import express from 'express'
-import cors from 'cors'
 import multer from 'multer'
+import cors from 'cors'
 import ffmpeg from 'fluent-ffmpeg'
-import path from 'path'
 import fs from 'fs'
+import path from 'path'
 
 const app = express()
-const port = process.env.PORT || 3001 // ✅ Phải dùng biến môi trường PORT
+const port = process.env.PORT || 10000
 
 app.use(cors())
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
 
-const upload = multer({ dest: 'uploads/' })
+// Tạo thư mục nếu chưa có
+const uploadsDir = path.join(__dirname, 'uploads')
+const outputsDir = path.join(__dirname, 'outputs')
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir)
+if (!fs.existsSync(outputsDir)) fs.mkdirSync(outputsDir)
 
-app.get('/', (req, res) => {
-  res.send('🎬 Video/audio processing server đang chạy!')
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir)
+  },
+  filename: function (req, file, cb) {
+    cb(null, `${Date.now()}-${file.originalname}`)
+  },
 })
+
+const upload = multer({ storage: storage })
 
 app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req, res) => {
   const videoFile = req.files?.['video']?.[0]
@@ -26,22 +35,27 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
     return res.status(400).send('Thiếu file video hoặc audio')
   }
 
-  const outputPath = path.join('outputs', `output-${Date.now()}.mp4`)
+  const outputFilename = `output-${Date.now()}.mp4`
+  const outputPath = path.join(outputsDir, outputFilename)
 
   ffmpeg()
     .input(videoFile.path)
     .input(audioFile.path)
-    .outputOptions('-c:v copy')
-    .outputOptions('-shortest')
-    .save(outputPath)
+    .outputOptions('-c:v copy') // giữ nguyên video gốc
+    .outputOptions('-c:a aac')  // chuyển âm thanh sang định dạng phổ biến
+    .outputOptions('-shortest') // dừng khi một trong hai track kết thúc
+    .on('start', () => console.log('🎬 Bắt đầu xử lý video + audio...'))
     .on('end', () => {
-      res.send(`✅ Đã xử lý xong! File lưu tại ${outputPath}`)
+      console.log('✅ Đã xử lý xong:', outputPath)
+      res.send(`✅ Đã xử lý xong: ${outputFilename}`)
     })
     .on('error', (err) => {
-      res.status(500).send(`❌ Lỗi xử lý video/audio: ${err.message}`)
+      console.error('❌ Lỗi xử lý video/audio:', err.message)
+      res.status(500).send('❌ Lỗi xử lý video/audio: ' + err.message)
     })
+    .save(outputPath)
 })
 
 app.listen(port, () => {
-  console.log(`🚀 Server đang chạy tại http://localhost:${port}`)
+  console.log(`🎬 Video/audio processing server đang chạy tại http://localhost:${port}`)
 })
