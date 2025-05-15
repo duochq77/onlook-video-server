@@ -1,21 +1,21 @@
 import express from 'express'
 import cors from 'cors'
 import multer from 'multer'
-import path from 'path'
-import fs from 'fs'
 import ffmpeg from 'fluent-ffmpeg'
+import fs from 'fs'
+import path from 'path'
 
 const app = express()
 const port = process.env.PORT || 10000
 
-// Thư mục lưu tạm file upload
+app.use(cors())
+app.use(express.json())
+
+// ⚠️ Sử dụng process.cwd() thay vì __dirname
+app.use('/outputs', express.static(path.join(process.cwd(), 'outputs')))
+
 const upload = multer({ dest: 'uploads/' })
 
-// ✅ Public thư mục outputs
-app.use('/outputs', express.static(path.join(__dirname, 'outputs')))
-app.use(cors())
-
-// Tạo route xử lý video/audio
 app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req, res) => {
   const videoFile = req.files?.['video']?.[0]
   const audioFile = req.files?.['audio']?.[0]
@@ -24,32 +24,23 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
     return res.status(400).send('❌ Thiếu file video hoặc audio')
   }
 
-  const outputDir = path.join(__dirname, 'outputs')
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir)
-  }
-
-  const outputPath = path.join(outputDir, `output-${Date.now()}.mp4`)
+  const outputFileName = `output-${Date.now()}.mp4`
+  const outputPath = path.join('outputs', outputFileName)
 
   ffmpeg()
     .input(videoFile.path)
     .input(audioFile.path)
-    .outputOptions('-c:v copy') // Giữ nguyên chất lượng video
-    .outputOptions('-map 0:v:0') // Lấy video từ input đầu tiên
-    .outputOptions('-map 1:a:0') // Lấy audio từ input thứ hai
-    .save(outputPath)
+    .outputOptions('-c:v copy', '-c:a aac', '-shortest')
     .on('end', () => {
-      // Xoá file tạm
       fs.unlinkSync(videoFile.path)
       fs.unlinkSync(audioFile.path)
-
-      const filename = path.basename(outputPath)
-      res.send(`✅ Đã xử lý xong: ${filename}`)
+      res.send(`✅ Đã xử lý xong: ${outputFileName}`)
     })
     .on('error', (err) => {
-      console.error('❌ FFmpeg error:', err)
+      console.error('❌ Lỗi xử lý video/audio:', err.message)
       res.status(500).send(`❌ Lỗi xử lý video/audio: ${err.message}`)
     })
+    .save(outputPath)
 })
 
 app.listen(port, () => {
