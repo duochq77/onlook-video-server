@@ -1,4 +1,4 @@
-import express, { Request } from 'express'
+import express from 'express'
 import cors from 'cors'
 import multer from 'multer'
 import ffmpeg from 'fluent-ffmpeg'
@@ -6,46 +6,39 @@ import path from 'path'
 import fs from 'fs'
 
 const app = express()
-const port = 3001
+const port = process.env.PORT || 3001 // ✅ Phải dùng biến môi trường PORT
 
 app.use(cors())
 app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
 
 const upload = multer({ dest: 'uploads/' })
 
-interface MulterRequest extends Request {
-  files: {
-    [fieldname: string]: Express.Multer.File[]
-  }
-}
+app.get('/', (req, res) => {
+  res.send('🎬 Video/audio processing server đang chạy!')
+})
 
-app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), async (req, res) => {
-  const request = req as MulterRequest
-
-  const videoFile = request.files?.['video']?.[0]
-  const audioFile = request.files?.['audio']?.[0]
+app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req, res) => {
+  const videoFile = req.files?.['video']?.[0]
+  const audioFile = req.files?.['audio']?.[0]
 
   if (!videoFile || !audioFile) {
-    return res.status(400).json({ error: 'Thiếu video hoặc audio file' })
+    return res.status(400).send('Thiếu file video hoặc audio')
   }
 
-  const outputPath = path.join('outputs', `${Date.now()}-output.mp4`)
+  const outputPath = path.join('outputs', `output-${Date.now()}.mp4`)
 
   ffmpeg()
-    .addInput(videoFile.path)
-    .addInput(audioFile.path)
-    .outputOptions('-c:v copy', '-c:a aac', '-shortest')
+    .input(videoFile.path)
+    .input(audioFile.path)
+    .outputOptions('-c:v copy')
+    .outputOptions('-shortest')
     .save(outputPath)
     .on('end', () => {
-      fs.unlinkSync(videoFile.path)
-      fs.unlinkSync(audioFile.path)
-      res.download(outputPath, () => {
-        fs.unlinkSync(outputPath)
-      })
+      res.send(`✅ Đã xử lý xong! File lưu tại ${outputPath}`)
     })
-    .on('error', (err: any) => {
-      console.error('Lỗi ffmpeg:', err)
-      res.status(500).json({ error: 'Xử lý thất bại' })
+    .on('error', (err) => {
+      res.status(500).send(`❌ Lỗi xử lý video/audio: ${err.message}`)
     })
 })
 
