@@ -11,19 +11,16 @@ const port = process.env.PORT || 10000
 app.use(cors())
 app.use(express.json())
 
-// 📂 Tạo thư mục outputs nếu chưa có
 const outputsDir = path.join(process.cwd(), 'outputs')
 if (!fs.existsSync(outputsDir)) {
   fs.mkdirSync(outputsDir)
 }
 
-// Cho phép truy cập file output qua /outputs
+// Cho phép truy cập file mp4 từ URL như /outputs/output-xxx.mp4
 app.use('/outputs', express.static(outputsDir))
 
-// ⚙️ Cấu hình Multer để upload file tạm vào thư mục uploads/
 const upload = multer({ dest: 'uploads/' })
 
-// 📌 API xử lý video + audio
 app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req, res) => {
   const videoFile = req.files?.['video']?.[0]
   const audioFile = req.files?.['audio']?.[0]
@@ -35,43 +32,22 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
   const outputFileName = `output-${Date.now()}.mp4`
   const outputPath = path.join(outputsDir, outputFileName)
 
-  console.log('🚀 Bắt đầu xử lý:')
-  console.log('📹 Video:', videoFile.path)
-  console.log('🎵 Audio:', audioFile.path)
-  console.log('📤 Output:', outputPath)
-
-  try {
-    ffmpeg()
-      .input(videoFile.path)
-      .input(audioFile.path)
-      .outputOptions(['-c:v copy', '-c:a aac', '-shortest'])
-      .on('start', (cmd) => {
-        console.log('▶️ FFmpeg command:', cmd)
-      })
-      .on('end', () => {
-        fs.unlinkSync(videoFile.path)
-        fs.unlinkSync(audioFile.path)
-        console.log('✅ Xử lý xong:', outputFileName)
-        if (!res.headersSent) {
-          res.send(`✅ Đã xử lý xong: ${outputFileName}`)
-        }
-      })
-      .on('error', (err) => {
-        console.error('❌ FFmpeg lỗi:', err.message)
-        if (!res.headersSent) {
-          res.status(500).send(`❌ FFmpeg lỗi: ${err.message}`)
-        }
-      })
-      .save(outputPath)
-  } catch (err: any) {
-    console.error('❌ Lỗi không xác định:', err.message)
-    if (!res.headersSent) {
-      res.status(500).send(`❌ Lỗi không xác định: ${err.message}`)
-    }
-  }
+  ffmpeg()
+    .input(videoFile.path)
+    .input(audioFile.path)
+    .outputOptions('-c:v copy', '-c:a aac', '-shortest')
+    .on('end', () => {
+      fs.unlinkSync(videoFile.path)
+      fs.unlinkSync(audioFile.path)
+      res.send(`✅ Đã xử lý xong: ${outputFileName}`)
+    })
+    .on('error', (err) => {
+      console.error('❌ Lỗi xử lý video/audio:', err.message)
+      res.status(500).send(`❌ Lỗi xử lý video/audio: ${err.message}`)
+    })
+    .save(outputPath)
 })
 
-// 🎬 Khởi động server
 app.listen(port, () => {
   console.log(`🎬 Video/audio processing server đang chạy tại http://localhost:${port}`)
 })
