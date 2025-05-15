@@ -11,14 +11,8 @@ const port = process.env.PORT || 10000
 app.use(cors())
 app.use(express.json())
 
-// ⚠️ Đảm bảo thư mục outputs tồn tại
-const outputsDir = path.join(process.cwd(), 'outputs')
-if (!fs.existsSync(outputsDir)) {
-  fs.mkdirSync(outputsDir)
-}
-
-// Cho phép truy cập file video đã xử lý
-app.use('/outputs', express.static(outputsDir))
+// ✅ Dùng process.cwd() để đúng đường dẫn trên Render
+app.use('/outputs', express.static(path.join(process.cwd(), 'outputs')))
 
 const upload = multer({ dest: 'uploads/' })
 
@@ -30,23 +24,27 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
     return res.status(400).send('❌ Thiếu file video hoặc audio')
   }
 
+  // ✅ Đảm bảo thư mục outputs tồn tại
+  const outputsDir = path.join(process.cwd(), 'outputs')
+  if (!fs.existsSync(outputsDir)) {
+    fs.mkdirSync(outputsDir)
+  }
+
   const outputFileName = `output-${Date.now()}.mp4`
   const outputPath = path.join(outputsDir, outputFileName)
 
   ffmpeg()
     .input(videoFile.path)
     .input(audioFile.path)
-    .outputOptions('-c:v copy', '-c:a aac', '-shortest')
+    .outputOptions(['-c:v', 'copy', '-c:a', 'aac', '-shortest']) // ✅ ĐÃ SỬA TẠI ĐÂY
     .on('end', () => {
       fs.unlinkSync(videoFile.path)
       fs.unlinkSync(audioFile.path)
-      console.log(`✅ Đã xử lý xong: ${outputFileName}`)
       res.send(`✅ Đã xử lý xong: ${outputFileName}`)
     })
-    .on('error', (err, stdout, stderr) => {
+    .on('error', (err) => {
       console.error('❌ Lỗi xử lý video/audio:', err.message)
-      console.error('📋 FFmpeg stderr:\n', stderr)
-      res.status(500).send(`❌ Lỗi xử lý video/audio: ${err.message}\n\n${stderr}`)
+      res.status(500).send(`❌ Lỗi xử lý video/audio: ${err.message}`)
     })
     .save(outputPath)
 })
