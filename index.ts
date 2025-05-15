@@ -8,11 +8,17 @@ import path from 'path'
 const app = express()
 const port = process.env.PORT || 10000
 
+// Tạo thư mục outputs nếu chưa có
+const outputsDir = path.join(process.cwd(), 'outputs')
+if (!fs.existsSync(outputsDir)) {
+  fs.mkdirSync(outputsDir)
+}
+
 app.use(cors())
 app.use(express.json())
 
-// ⚠️ Sử dụng process.cwd() thay vì __dirname
-app.use('/outputs', express.static(path.join(process.cwd(), 'outputs')))
+// Cho phép truy cập file qua URL /outputs/...
+app.use('/outputs', express.static(outputsDir))
 
 const upload = multer({ dest: 'uploads/' })
 
@@ -25,13 +31,14 @@ app.post('/process', upload.fields([{ name: 'video' }, { name: 'audio' }]), (req
   }
 
   const outputFileName = `output-${Date.now()}.mp4`
-  const outputPath = path.join('outputs', outputFileName)
+  const outputPath = path.join(outputsDir, outputFileName)
 
   ffmpeg()
     .input(videoFile.path)
     .input(audioFile.path)
     .outputOptions('-c:v copy', '-c:a aac', '-shortest')
     .on('end', () => {
+      // Xoá file tạm (input), KHÔNG xoá file output
       fs.unlinkSync(videoFile.path)
       fs.unlinkSync(audioFile.path)
       res.send(`✅ Đã xử lý xong: ${outputFileName}`)
